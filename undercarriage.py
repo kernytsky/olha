@@ -2,57 +2,82 @@ from build123d import *
 from ocp_vscode import *
 set_port(3939)
 
-l = 92
-h = 10
-rod_edge = 3
-
 # Add link rod
+# l = 92
+# h = 10
+# rod_h = 2
+# rod_w = 4
 arcd = 7.2
-l1 = Line((0, 0), (1, 0))
-l2 = JernArc(start=l1 @ 1, tangent=l1 % 1, radius=arcd / 2, arc_size=180)
-l3 = PolarLine(start=l2 @ 1, length=l, direction=l2 % 1)
-l4 = JernArc(start=l3 @ 1, tangent=l3 % 1, radius=arcd / 2, arc_size=90)
-l5 = PolarLine(start=l4 @ 1, length=h, direction=l4 % 1)
-l6 = JernArc(start=l5 @ 1, tangent=l5 % 1, radius=arcd / 2, arc_size=90)
+
+# Make front clip
+
+l1 = Line((0, 0), (0.1, 0))
+l2 = JernArc(start=l1 @ 1, tangent=l1 % 1, radius=arcd * .18, arc_size=170)
+l3 = PolarLine(start=l2 @ 1, length=2, direction=l2 % 1)
 # l7 = PolarLine(start=l6 @ 1, length=1, direction=l6 % 1)
 # l8 = JernArc(start=l7 @ 1, tangent=l7 % 1, radius=arcd / 2, arc_size=-90)
 # l9 = PolarLine(start=l8 @ 1, length=.5, direction=l8 % 1)
 
-lprof = Curve() + (l1, l2, l3, l4, l5, l6) #, l8, l9) + 
-wire = Wire(lprof.edges())  #  TODO sprof.wires() fails
-sweep_rect = Rectangle(rod_edge, rod_edge)
-mainp = sweep(Plane.YZ * sweep_rect, path=wire)
+lprof = Curve() + (l1, l2, l3) 
+wire = Plane.XZ * Wire(lprof.edges())  #  TODO sprof.wires() fails
+sweep_rect = Rectangle(14, 1.5)
+front_clip = sweep(Plane.YZ * sweep_rect, path=wire)
+front_clip = Pos(30, 0, 29.2) * front_clip
 
-s1 = Line((0, 0), (0, 8))
-s2 = JernArc(start=s1 @ 1, tangent=s1 % 1, radius=arcd / 2, arc_size=80)
-s3 = PolarLine(start=s2 @ 1, length=80, direction=s2 % 1)
+# Make rear clip
 
-#s3 = Line((0, 12), (30, 12))
-sprof = Curve() + (s1, s2, s3)
-hook = sweep(Plane.XZ * sweep_rect, path=sprof)
-mainp += Pos(-10, 8) * hook
-fin = Pos(10, 20) *mainp
+l1 = PolarLine((0, 10), -44, 57)
+l2 = JernArc(start=l1 @ 1, tangent=l1 % 1, radius=arcd / 2, arc_size=-60)
+l3 = PolarLine(start=l2 @ 1, length=5, direction=l2 % 1)
+l4 = JernArc(start=l3 @ 1, tangent=l3 % 1, radius=arcd / 2, arc_size=-80)
 
+lprof = Curve() + (l1, l2, l3, l4) 
+wire = Plane.XZ * Wire(lprof.edges())  #  TODO sprof.wires() fails
+sweep_rect = Plane.YZ * Rot(-60, 0, 0) * Pos(0, 0, 0) * Rectangle(7.5, 2)
+rear_clip = sweep(sweep_rect, path=wire)
+rear_clip = Pos(-33, 0, 14) * Rot(0, 90, 0) * rear_clip
+rear_clip = split(rear_clip, Plane(origin=(0, 0, 11), normal=(0, 0, 1)))
 
-cyl_len = 60
-tol = 1.5
-wall_width = 1.2
+# Build undecarriage body
+body_l = 60
+body_w = 100
+body_h = 30
+wall_width = 1
 
+body = Box(body_l, body_w, body_h, align=(Align.CENTER, Align.CENTER))
+ibody = Box(body_l - wall_width*2, body_w - wall_width*2, body_h - wall_width, align=(Align.CENTER, Align.CENTER, Align.MIN))
+body -= Pos(0, 0, wall_width) * ibody
+uc = front_clip + Pos(0, 0, -10) * rear_clip + body
 
-cyl = extrude(Rectangle(rod_edge + tol + wall_width, rod_edge + tol + wall_width), cyl_len)
-cyl -= extrude(Pos(0, 0, 0) * Rectangle(rod_edge + tol, rod_edge + tol), cyl_len)
+# Make servo holder
+servo_w = 12
+servo_l = 23
+servo_h = 24
+servo_tol = 0.2
+servo_mount_h = 20 # height of the top of the overhang with mounting holes
 
-cyl2 = Plane.XZ * Rectangle(100, cyl_len, align=(Align.MAX, Align.MIN))
-cyl2 = extrude(Pos((rod_edge + tol + wall_width)/2, (rod_edge + tol)/2, 0) * cyl2, -1)
-cyl = cyl + cyl2
+servo_body = Pos(22, 10) * Box(servo_w + servo_tol, servo_l + servo_tol, 10)
+uc -= servo_body
+servo_wall = Plane.YZ * Box(servo_l, servo_mount_h, wall_width, 
+                            align=(Align.CENTER, Align.MIN, Align.CENTER))
 
-# splits help keep the object 3d printable by reducing overhang
-# splitz = rod_r * 0.7
-# fin = split(fin, Plane(origin=(0, 0, -splitz)))
-# fin = split(fin, Plane(origin=(0, 0, splitz)), keep=Keep.BOTTOM)
-show((fin, cyl), reset_camera=Camera.KEEP)
-#show(hook)
+uc += Pos(14.5, 10, 0) * servo_wall
 
-export_stl(fin, "models/undercarriage.stl")
-export_stl(cyl, "models/muni.stl")
+# Add slots for rail mount points
+mount_slot = Box(2, 10, 10)
+uc -= Pos(5, -3, 0) * mount_slot + Pos(-20, -3, 0) * mount_slot
 
+show((uc), reset_camera=Camera.KEEP)
+export_stl(uc, "models/undercarriage.stl")
+
+# # Make hook for muni
+
+# s1 = Line((0, 0), (0, 28))
+# s2 = JernArc(start=s1 @ 1, tangent=s1 % 1, radius=arcd / 2, arc_size=80)
+# s3 = PolarLine(start=s2 @ 1, length=80, direction=s2 % 1)
+
+# #s3 = Line((0, 12), (30, 12))
+# sprof = Curve() + (s1, s2, s3)
+# sprof_wire = Plane.XZ * Wire(sprof.edges())
+# hook = sweep(Plane.XY * sweep_rect, path=sprof_wire)
+# mainp += Pos(-10, 8) * hook
